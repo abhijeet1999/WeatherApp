@@ -7,6 +7,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/abhijeet1999/weather/Consumer/alerts"
 	"github.com/abhijeet1999/weather/Consumer/prometheus"
 	"github.com/abhijeet1999/weather/models"
 	"github.com/segmentio/kafka-go"
@@ -14,14 +15,15 @@ import (
 
 // KafkaConsumer handles consuming weather data from Kafka
 type KafkaConsumer struct {
-	reader  *kafka.Reader
-	topic   string
-	groupID string
-	metrics *prometheus.WeatherMetrics
+	reader         *kafka.Reader
+	topic          string
+	groupID        string
+	metrics        *prometheus.WeatherMetrics
+	alertEvaluator *alerts.AlertEvaluator
 }
 
 // NewKafkaConsumer creates a new Kafka consumer instance
-func NewKafkaConsumer(bootstrapServers, topic, groupID string) (*KafkaConsumer, error) {
+func NewKafkaConsumer(bootstrapServers, topic, groupID string, alertEvaluator *alerts.AlertEvaluator) (*KafkaConsumer, error) {
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:     []string{bootstrapServers},
 		Topic:       topic,
@@ -39,10 +41,11 @@ func NewKafkaConsumer(bootstrapServers, topic, groupID string) (*KafkaConsumer, 
 	log.Printf("📥 Kafka consumer connected to %s, topic: %s, group: %s", bootstrapServers, topic, groupID)
 
 	return &KafkaConsumer{
-		reader:  reader,
-		topic:   topic,
-		groupID: groupID,
-		metrics: metrics,
+		reader:         reader,
+		topic:          topic,
+		groupID:        groupID,
+		metrics:        metrics,
+		alertEvaluator: alertEvaluator,
 	}, nil
 }
 
@@ -135,6 +138,12 @@ func (kc *KafkaConsumer) processCurrentWeather(msg WeatherMessage) error {
 		float32(msg.Current.Main.Pressure),
 	)
 
+	// Evaluate alerts
+	if kc.alertEvaluator != nil {
+		alerts := kc.alertEvaluator.EvaluateCurrentWeather(*msg.Current, msg.ZipCode)
+		kc.processAlerts(alerts)
+	}
+
 	log.Printf("📊 Updated metrics for %s: Temp=%.1f°C, Humidity=%d%%, Wind=%.1fm/s",
 		msg.City, msg.Current.Main.Temp, msg.Current.Main.Humidity, msg.Current.Wind.Speed)
 
@@ -182,6 +191,12 @@ func (kc *KafkaConsumer) processHourlyWeather(msg WeatherMessage) error {
 		msg.Hourly.Dt,
 	)
 
+	// Evaluate alerts for hourly data
+	if kc.alertEvaluator != nil {
+		alerts := kc.alertEvaluator.EvaluateHourlyWeather(*msg.Hourly, msg.ZipCode)
+		kc.processAlerts(alerts)
+	}
+
 	log.Printf("📊 Updated hourly metrics for %s: Temp=%.1f°C, Humidity=%d%%, Wind=%.1fm/s",
 		msg.City, msg.Hourly.Main.Temp, msg.Hourly.Main.Humidity, msg.Hourly.Wind.Speed)
 
@@ -218,4 +233,20 @@ func (kc *KafkaConsumer) Close() {
 // GetMetrics returns the Prometheus metrics instance
 func (kc *KafkaConsumer) GetMetrics() *prometheus.WeatherMetrics {
 	return kc.metrics
+}
+
+// processAlerts processes triggered alerts
+func (kc *KafkaConsumer) processAlerts(weatherAlerts []alerts.WeatherAlert) {
+	for _, alert := range weatherAlerts {
+		log.Printf("🚨 ALERT [%s] %s: %s", alert.Severity, alert.Type, alert.Description)
+
+		// Update Prometheus metrics with alert information
+		kc.metrics.UpdateAlertMetrics(
+			alert.City,
+			alert.Type,
+			alert.Severity,
+			alert.Value,
+			alert.Threshold,
+		)
+	}
 }

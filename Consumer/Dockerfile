@@ -12,6 +12,8 @@ RUN go mod download
 # Copy source code
 COPY Consumer/ ./Consumer/
 COPY models/ ./models/
+COPY Producer/utils/ ./Producer/utils/
+COPY input.txt ./input.txt
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o consumer ./Consumer/main.go
@@ -25,6 +27,7 @@ WORKDIR /root/
 
 # Copy the binary from builder stage
 COPY --from=builder /app/consumer .
+COPY --from=builder /app/input.txt .
 
 # Expose ports
 EXPOSE 8080 8081

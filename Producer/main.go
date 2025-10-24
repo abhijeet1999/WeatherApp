@@ -67,16 +67,19 @@ func processInitialBatch(weatherService *weather.WeatherService, producer *kafka
 	requests, err := utils.ParseInputFile(inputFile)
 	if err != nil {
 		log.Printf("❌ Error parsing input file: %v", err)
+		log.Printf("⚠️ Skipping initial batch processing - check input file format")
 		return
 	}
 
 	log.Printf("🚀 Processing %d weather requests...", len(requests))
 
 	// Process each request
+	successCount := 0
 	for i, req := range requests {
 		log.Printf("📤 Processing request %d: %s (%d days)", i+1, req.ZipCode, req.Days)
 
 		// Process based on days requirement
+		var err error
 		if req.Days >= 4 {
 			// For 4+ days: Send hourly data for 48 hours + daily data for remaining days
 			err = processExtendedWeatherData(weatherService, producer, req)
@@ -90,11 +93,12 @@ func processInitialBatch(weatherService *weather.WeatherService, producer *kafka
 			continue
 		}
 
+		successCount++
 		// Small delay between requests
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	log.Println("✅ Initial batch processing completed")
+	log.Printf("✅ Initial batch processing completed: %d/%d requests successful", successCount, len(requests))
 }
 
 // processExtendedWeatherData handles 4+ days with hourly data for first 48 hours

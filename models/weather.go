@@ -105,9 +105,11 @@ type GeoResponse struct {
 
 // WeatherRequest represents the input parameters for weather requests
 type WeatherRequest struct {
-	ZipCode   string
-	Days      int
-	AlertTemp float32
+	ZipCode       string
+	Days          int
+	AlertTemp     float32
+	AlertWind     float32
+	AlertHumidity int
 }
 
 // DailyForecast represents a daily weather summary

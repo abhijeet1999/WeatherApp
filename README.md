@@ -60,35 +60,40 @@ docker-compose up -d
 
 ```
 WeatherApp/
-├── Producer/
+├── Producer/                    # Weather data producer service
 │   ├── Dockerfile
 │   ├── main.go
 │   ├── kafka/
-│   │   └── producer.go
+│   │   └── producer.go          # Kafka producer logic
 │   ├── weather/
-│   │   └── service.go
+│   │   └── service.go           # OpenWeatherMap API client
 │   └── utils/
-│       └── constants.go
-├── Consumer/
+│       ├── constants.go         # API key management
+│       └── parser.go            # Input file parsing
+├── Consumer/                    # Weather data consumer service
 │   ├── Dockerfile
 │   ├── main.go
 │   ├── kafka/
-│   │   └── consumer.go
+│   │   └── consumer.go          # Kafka consumer logic
 │   ├── api/
-│   │   └── server.go
-│   └── prometheus/
-│       └── metrics.go
+│   │   └── server.go            # HTTP API endpoints
+│   ├── prometheus/
+│   │   └── metrics.go           # Prometheus metrics
+│   └── alerts/
+│       └── evaluator.go         # Alert evaluation logic
 ├── models/
-│   ├── weather.go
-│   └── geo.go
-├── docker-compose.yml
-├── prometheus.yml
-├── weather_alerts.yml
-├── alertmanager.yml
-├── input.txt
-├── go.mod
-├── .gitignore
-└── .dockerignore
+│   └── weather.go               # Data models
+├── grafana/                     # Grafana configuration
+│   ├── dashboards/
+│   └── provisioning/
+├── docker-compose.yml           # Docker services orchestration
+├── prometheus.yml               # Prometheus configuration
+├── weather_alerts.yml           # Alert rules
+├── alertmanager.yml             # Alert Manager configuration
+├── input.txt                    # Weather locations and thresholds
+├── go.mod                       # Go module dependencies
+├── .gitignore                   # Git ignore rules
+└── .dockerignore                # Docker ignore rules
 ```
 
 ## ⚙️ Configuration
@@ -104,18 +109,25 @@ WeatherApp/
 
 ### Input Configuration
 
-Edit `input.txt` to specify weather locations:
+Edit `input.txt` to specify weather locations and alert thresholds:
 
 ```
-12601,4,10
-10001,3,15
-90210,2,20
+12601,4,10,15,85
+10001,3,15,20,90
+90210,2,20,10,80
 ```
 
-**Format**: `zip_code,days_back,interval_hours`
-- `zip_code`: US ZIP code for weather location
-- `days_back`: Number of days to fetch historical data
-- `interval_hours`: Hours between data points
+**Format**: `zip_code,days,temp_threshold,wind_threshold,humidity_threshold`
+- `zip_code`: US ZIP code for weather location (5 digits or 5+4 format)
+- `days`: Number of days to fetch (1-5)
+- `temp_threshold`: Temperature alert threshold in Celsius (-50 to 60°C)
+- `wind_threshold`: Wind speed alert threshold in m/s (0-100)
+- `humidity_threshold`: Humidity alert threshold in % (0-100)
+
+**⚠️ Important Notes:**
+- **Duplicate zip codes**: If the same zip code appears multiple times, only the **last entry** will be used for alert thresholds
+- **Input validation**: Invalid entries are skipped with error messages, but the system continues running
+- **Restart required**: Changes to `input.txt` require a system restart to take effect
 
 ### Alert Configuration
 
@@ -126,6 +138,38 @@ The system includes pre-configured alerts in `weather_alerts.yml`:
 - **Poughkeepsie Specific**: ≥ 10°C (warning)
 - **High Humidity**: > 90%
 - **High Wind Speed**: > 20 m/s
+
+## 🔄 Restart Requirements
+
+### When to Restart the System
+
+The following changes require a **full system restart** to take effect:
+
+1. **Input File Changes** (`input.txt`):
+   ```bash
+   # After editing input.txt
+   docker-compose down
+   docker-compose up --build -d
+   ```
+
+2. **Alert Rule Changes** (`weather_alerts.yml`):
+   ```bash
+   # After editing weather_alerts.yml
+   docker-compose restart prometheus alertmanager
+   ```
+
+3. **Configuration Changes** (`prometheus.yml`, `alertmanager.yml`):
+   ```bash
+   # After editing configuration files
+   docker-compose restart prometheus alertmanager
+   ```
+
+### Hot Reload (No Restart Required)
+
+These changes take effect automatically:
+- Environment variable changes (requires container restart)
+- Grafana dashboard modifications
+- Prometheus query changes
 
 ## 🔧 Advanced Usage
 
@@ -251,6 +295,24 @@ Access the Alert Manager UI at http://localhost:9093 to:
    
    # Verify Kafka topic has data
    docker-compose exec kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic weather_data --from-beginning
+   ```
+
+4. **Duplicate Zip Codes in Input File**
+   ```bash
+   # Check for duplicate entries
+   cut -d',' -f1 input.txt | sort | uniq -d
+   
+   # The system will process all entries but only use the last threshold for each zip code
+   # Check consumer logs for alert rule initialization
+   docker-compose logs weather-consumer | grep "Added alert rule"
+   ```
+
+5. **Input File Validation Errors**
+   ```bash
+   # Check producer logs for parsing errors
+   docker-compose logs weather-producer | grep -E "(Error|Failed|invalid)"
+   
+   # Invalid entries are skipped, system continues with valid entries
    ```
 
 ### Log Locations

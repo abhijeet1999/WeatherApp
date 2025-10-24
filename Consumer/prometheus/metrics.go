@@ -29,6 +29,10 @@ type WeatherMetrics struct {
 
 	// Histogram metrics
 	weatherProcessingTime *prometheus.HistogramVec
+
+	// Alert metrics
+	alertCounter *prometheus.CounterVec
+	alertGauge   *prometheus.GaugeVec
 }
 
 // NewWeatherMetrics creates a new WeatherMetrics instance
@@ -126,6 +130,23 @@ func NewWeatherMetrics() *WeatherMetrics {
 			},
 			[]string{"city", "zip_code"},
 		),
+
+		// Alert metrics
+		alertCounter: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "weather_alerts_total",
+				Help: "Total number of weather alerts triggered",
+			},
+			[]string{"city", "zip_code", "alert_type", "severity"},
+		),
+
+		alertGauge: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Name: "weather_alert_value",
+				Help: "Current alert value vs threshold",
+			},
+			[]string{"city", "zip_code", "alert_type", "severity"},
+		),
 	}
 
 	// Register all metrics
@@ -141,6 +162,8 @@ func NewWeatherMetrics() *WeatherMetrics {
 		metrics.weatherRequestsTotal,
 		metrics.weatherErrorsTotal,
 		metrics.weatherProcessingTime,
+		metrics.alertCounter,
+		metrics.alertGauge,
 	)
 
 	return metrics
@@ -187,6 +210,20 @@ func (wm *WeatherMetrics) SetTestTemperature(city string, temperature float64) {
 	zipCode := "test"
 	wm.temperatureCelsius.WithLabelValues(city, zipCode).Set(temperature)
 	log.Printf("🧪 Set test temperature for %s: %.1f°C", city, temperature)
+}
+
+// UpdateAlertMetrics updates alert-related metrics
+func (wm *WeatherMetrics) UpdateAlertMetrics(city, alertType, severity string, value, threshold float64) {
+	zipCode := "unknown"
+
+	// Increment alert counter
+	wm.alertCounter.WithLabelValues(city, zipCode, alertType, severity).Inc()
+
+	// Set alert value gauge (value vs threshold)
+	wm.alertGauge.WithLabelValues(city, zipCode, alertType, severity).Set(value)
+
+	log.Printf("📊 Updated alert metrics: %s [%s] %s: %.2f (threshold: %.2f)",
+		severity, alertType, city, value, threshold)
 }
 
 // StartMetricsServer starts the Prometheus metrics HTTP server

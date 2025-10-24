@@ -1,0 +1,32 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Alert Manager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+rule_files:
+  - "weather_alerts.yml"
+
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Weather Consumer Metrics
+  - job_name: 'weather-consumer'
+    static_configs:
+      - targets: ['weather-consumer:8080']  # Weather consumer metrics endpoint
+    scrape_interval: 5s
+    metrics_path: '/metrics'
+
+  # Kafka JMX metrics (optional)
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['kafka:9101']
+    scrape_interval: 30s

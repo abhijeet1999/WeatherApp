@@ -15,38 +15,46 @@ COPY Producer/ ./Producer/
 COPY Consumer/ ./Consumer/
 COPY models/ ./models/
 
-# Build both services
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o producer ./Producer/main.go
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o consumer ./Consumer/main.go
+# Build both services with optimizations
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -trimpath -o producer ./Producer/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -trimpath -o consumer ./Consumer/main.go
 
-# Final stage
-FROM alpine:latest
+# Final stage - Optimized Alpine
+FROM alpine:3.19
 
-# Install ca-certificates for HTTPS requests
-RUN apk --no-cache add ca-certificates
+# Install only essential packages
+RUN apk --no-cache add ca-certificates tzdata && \
+    addgroup -g 1001 -S appgroup && \
+    adduser -u 1001 -S appuser -G appgroup
 
 # Create app directory
-WORKDIR /root/
+WORKDIR /app
 
 # Copy built binaries
 COPY --from=builder /app/producer .
 COPY --from=builder /app/consumer .
 
-# Copy input file
+# Copy input file and create optimized startup script
 COPY input.txt .
+COPY <<EOF start.sh
+#!/bin/sh
+echo "🚀 Starting WeatherApp Services..."
+echo "📤 Starting Producer..."
+./producer &
+sleep 5
+echo "📥 Starting Consumer..."
+./consumer &
+echo "✅ Both services started!"
+echo "⏹️  Press Ctrl+C to stop..."
+wait
+EOF
 
-# Create startup script
-RUN echo '#!/bin/sh' > start.sh && \
-    echo 'echo "🚀 Starting WeatherApp Services..."' >> start.sh && \
-    echo 'echo "📤 Starting Producer..."' >> start.sh && \
-    echo './producer &' >> start.sh && \
-    echo 'sleep 5' >> start.sh && \
-    echo 'echo "📥 Starting Consumer..."' >> start.sh && \
-    echo './consumer &' >> start.sh && \
-    echo 'echo "✅ Both services started!"' >> start.sh && \
-    echo 'echo "⏹️  Press Ctrl+C to stop..."' >> start.sh && \
-    echo 'wait' >> start.sh && \
-    chmod +x start.sh
+# Set permissions and ownership
+RUN chmod +x start.sh && \
+    chown -R appuser:appgroup /app
+
+# Switch to non-root user
+USER appuser
 
 # Expose ports
 EXPOSE 8080 8081

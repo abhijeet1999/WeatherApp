@@ -49,7 +49,7 @@ groups:
       description: "Temperature in {{ $labels.city }} is {{ $value }}°C, which is below the critical threshold of -10°C"
       runbook_url: "https://example.com/runbook/critical-low-temperature"
 
-  # Poughkeepsie Specific Alert at 10°C
+  # Custom Temperature Alerts (based on input.txt thresholds)
   - alert: PoughkeepsieTemperatureAlert
     expr: weather_temperature_celsius{city="Poughkeepsie"} >= 10
     for: 0m
@@ -60,7 +60,28 @@ groups:
     annotations:
       summary: "Poughkeepsie temperature reached 10°C threshold"
       description: "Temperature in Poughkeepsie is {{ $value }}°C, which has reached the 10°C alert threshold"
-      runbook_url: "https://example.com/runbook/poughkeepsie-temperature"
+
+  - alert: NewYorkTemperatureAlert
+    expr: weather_temperature_celsius{city="New York City"} >= 15
+    for: 0m
+    labels:
+      severity: warning
+      city: "New York City"
+      temperature: "{{ $value }}"
+    annotations:
+      summary: "New York City temperature reached 15°C threshold"
+      description: "Temperature in New York City is {{ $value }}°C, which has reached the 15°C alert threshold"
+
+  - alert: BeverlyHillsTemperatureAlert
+    expr: weather_temperature_celsius{city="Beverly Hills"} >= 20
+    for: 0m
+    labels:
+      severity: warning
+      city: "Beverly Hills"
+      temperature: "{{ $value }}"
+    annotations:
+      summary: "Beverly Hills temperature reached 20°C threshold"
+      description: "Temperature in Beverly Hills is {{ $value }}°C, which has reached the 20°C alert threshold"
 
   # High Humidity Alert
   - alert: HighHumidity
@@ -76,7 +97,7 @@ groups:
 
   # High Wind Speed Alert
   - alert: HighWindSpeed
-    expr: weather_wind_speed_mps > 15
+    expr: weather_wind_speed_meters_per_second > 15
     for: 3m
     labels:
       severity: warning
@@ -88,7 +109,7 @@ groups:
 
   # Critical Wind Speed Alert
   - alert: CriticalWindSpeed
-    expr: weather_wind_speed_mps > 25
+    expr: weather_wind_speed_meters_per_second > 25
     for: 1m
     labels:
       severity: critical

@@ -42,7 +42,22 @@ type WeatherMessage struct {
 	Country     string                              `json:"country"`
 	Current     *models.OpenWeatherResponse         `json:"current,omitempty"`
 	Forecast    *models.OpenWeatherForecastResponse `json:"forecast,omitempty"`
-	MessageType string                              `json:"message_type"` // "current" or "forecast"
+	Hourly      *models.ForecastItem                `json:"hourly,omitempty"`
+	Daily       *DailyWeatherData                   `json:"daily,omitempty"`
+	MessageType string                              `json:"message_type"` // "current", "forecast", "hourly", "daily"
+}
+
+// DailyWeatherData represents daily weather summary
+type DailyWeatherData struct {
+	Day         int     `json:"day"`
+	Date        string  `json:"date"`
+	TempMin     float32 `json:"temp_min"`
+	TempMax     float32 `json:"temp_max"`
+	TempAvg     float32 `json:"temp_avg"`
+	Humidity    int     `json:"humidity"`
+	WindSpeed   float32 `json:"wind_speed"`
+	Description string  `json:"description"`
+	Icon        string  `json:"icon"`
 }
 
 // SendWeatherData sends weather data to Kafka topic
@@ -105,6 +120,91 @@ func (kp *KafkaProducer) SendForecastWeather(zipCode, city, country string, fore
 	}
 
 	return kp.SendWeatherData(message)
+}
+
+// SendHourlyWeather sends individual hourly weather data to Kafka
+func (kp *KafkaProducer) SendHourlyWeather(zipCode, city, country string, hourly models.ForecastItem) error {
+	message := WeatherMessage{
+		Timestamp:   time.Now(),
+		ZipCode:     zipCode,
+		City:        city,
+		Country:     country,
+		Hourly:      &hourly,
+		MessageType: "hourly",
+	}
+
+	return kp.SendWeatherData(message)
+}
+
+// SendDailyWeather sends daily weather summary to Kafka
+func (kp *KafkaProducer) SendDailyWeather(zipCode, city, country string, forecast models.OpenWeatherForecastResponse, day int) error {
+	// Calculate daily summary from forecast items for the specified day
+	dailyData := kp.calculateDailySummary(forecast, day)
+
+	message := WeatherMessage{
+		Timestamp:   time.Now(),
+		ZipCode:     zipCode,
+		City:        city,
+		Country:     country,
+		Daily:       dailyData,
+		MessageType: "daily",
+	}
+
+	return kp.SendWeatherData(message)
+}
+
+// calculateDailySummary calculates daily weather summary from forecast items
+func (kp *KafkaProducer) calculateDailySummary(forecast models.OpenWeatherForecastResponse, day int) *DailyWeatherData {
+	// Get forecast items for the specified day
+	var dayItems []models.ForecastItem
+	targetDate := time.Now().AddDate(0, 0, day-1).Format("2006-01-02")
+
+	for _, item := range forecast.List {
+		itemDate := time.Unix(item.Dt, 0).Format("2006-01-02")
+		if itemDate == targetDate {
+			dayItems = append(dayItems, item)
+		}
+	}
+
+	if len(dayItems) == 0 {
+		return &DailyWeatherData{
+			Day:         day,
+			Date:        targetDate,
+			Description: "No data available",
+		}
+	}
+
+	// Calculate summary statistics
+	var tempMin, tempMax, tempSum float32
+	var humiditySum int
+	var windSum float32
+
+	tempMin = dayItems[0].Main.TempMin
+	tempMax = dayItems[0].Main.TempMax
+
+	for _, item := range dayItems {
+		if item.Main.TempMin < tempMin {
+			tempMin = item.Main.TempMin
+		}
+		if item.Main.TempMax > tempMax {
+			tempMax = item.Main.TempMax
+		}
+		tempSum += item.Main.Temp
+		humiditySum += item.Main.Humidity
+		windSum += item.Wind.Speed
+	}
+
+	return &DailyWeatherData{
+		Day:         day,
+		Date:        targetDate,
+		TempMin:     tempMin,
+		TempMax:     tempMax,
+		TempAvg:     tempSum / float32(len(dayItems)),
+		Humidity:    humiditySum / len(dayItems),
+		WindSpeed:   windSum / float32(len(dayItems)),
+		Description: dayItems[0].Weather[0].Description,
+		Icon:        dayItems[0].Weather[0].Icon,
+	}
 }
 
 // Close closes the Kafka producer

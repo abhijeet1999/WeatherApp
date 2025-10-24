@@ -8,8 +8,9 @@ import (
 	"time"
 
 	"github.com/abhijeet1999/weather/Producer/kafka"
-	"github.com/abhijeet1999/weather/Producer/weather"
 	"github.com/abhijeet1999/weather/Producer/utils"
+	"github.com/abhijeet1999/weather/Producer/weather"
+	"github.com/abhijeet1999/weather/models"
 )
 
 func main() {
@@ -75,32 +76,18 @@ func processInitialBatch(weatherService *weather.WeatherService, producer *kafka
 	for i, req := range requests {
 		log.Printf("📤 Processing request %d: %s (%d days)", i+1, req.ZipCode, req.Days)
 
-		// Fetch current weather
-		weather, err := weatherService.GetWeatherByZip(req.ZipCode, "US", "metric")
+		// Process based on days requirement
+		if req.Days >= 4 {
+			// For 4+ days: Send hourly data for 48 hours + daily data for remaining days
+			err = processExtendedWeatherData(weatherService, producer, req)
+		} else {
+			// For 1-3 days: Use existing logic
+			err = processStandardWeatherData(weatherService, producer, req)
+		}
+
 		if err != nil {
-			log.Printf("❌ Failed to fetch weather for %s: %v", req.ZipCode, err)
+			log.Printf("❌ Failed to process weather for %s: %v", req.ZipCode, err)
 			continue
-		}
-
-		// Send current weather to Kafka
-		err = producer.SendCurrentWeather(req.ZipCode, weather.Name, "US", weather)
-		if err != nil {
-			log.Printf("❌ Failed to send current weather to Kafka for %s: %v", req.ZipCode, err)
-		}
-
-		// Fetch forecast if requested
-		if req.Days > 0 {
-			forecast, err := weatherService.GetForecastByZip(req.ZipCode, "US", "metric")
-			if err != nil {
-				log.Printf("❌ Failed to fetch forecast for %s: %v", req.ZipCode, err)
-				continue
-			}
-
-			// Send forecast to Kafka
-			err = producer.SendForecastWeather(req.ZipCode, forecast.City.Name, "US", forecast)
-			if err != nil {
-				log.Printf("❌ Failed to send forecast to Kafka for %s: %v", req.ZipCode, err)
-			}
 		}
 
 		// Small delay between requests
@@ -108,6 +95,100 @@ func processInitialBatch(weatherService *weather.WeatherService, producer *kafka
 	}
 
 	log.Println("✅ Initial batch processing completed")
+}
+
+// processExtendedWeatherData handles 4+ days with hourly data for first 48 hours
+func processExtendedWeatherData(weatherService *weather.WeatherService, producer *kafka.KafkaProducer, req models.WeatherRequest) error {
+	log.Printf("🕐 Processing extended weather data for %s (%d days)", req.ZipCode, req.Days)
+
+	// Get current weather
+	currentWeather, err := weatherService.GetWeatherByZip(req.ZipCode, "US", "metric")
+	if err != nil {
+		return err
+	}
+
+	// Send current weather
+	err = producer.SendCurrentWeather(req.ZipCode, currentWeather.Name, "US", currentWeather)
+	if err != nil {
+		log.Printf("❌ Failed to send current weather for %s: %v", req.ZipCode, err)
+	}
+
+	// Get 5-day forecast for hourly data
+	forecast, err := weatherService.GetForecastByZip(req.ZipCode, "US", "metric")
+	if err != nil {
+		return err
+	}
+
+	// Send hourly data for first 48 hours (every 3 hours = 16 data points)
+	hourlyCount := 0
+	for _, item := range forecast.List {
+		if hourlyCount >= 16 { // 48 hours / 3 hours per forecast = 16 items
+			break
+		}
+
+		// Send individual forecast item as hourly data
+		err = producer.SendHourlyWeather(req.ZipCode, forecast.City.Name, "US", item)
+		if err != nil {
+			log.Printf("❌ Failed to send hourly weather for %s: %v", req.ZipCode, err)
+		}
+
+		hourlyCount++
+		log.Printf("📊 Sent hourly data %d/16 for %s: %.1f°C", hourlyCount, req.ZipCode, item.Main.Temp)
+
+		// Small delay between hourly sends
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Send daily summaries for remaining days (3rd and 4th day)
+	if req.Days >= 3 {
+		err = producer.SendDailyWeather(req.ZipCode, forecast.City.Name, "US", forecast, 3)
+		if err != nil {
+			log.Printf("❌ Failed to send daily weather (day 3) for %s: %v", req.ZipCode, err)
+		}
+	}
+
+	if req.Days >= 4 {
+		err = producer.SendDailyWeather(req.ZipCode, forecast.City.Name, "US", forecast, 4)
+		if err != nil {
+			log.Printf("❌ Failed to send daily weather (day 4) for %s: %v", req.ZipCode, err)
+		}
+	}
+
+	log.Printf("✅ Extended weather data completed for %s: %d hourly + %d daily",
+		req.ZipCode, hourlyCount, req.Days-2)
+
+	return nil
+}
+
+// processStandardWeatherData handles 1-3 days with existing logic
+func processStandardWeatherData(weatherService *weather.WeatherService, producer *kafka.KafkaProducer, req models.WeatherRequest) error {
+	// Fetch current weather
+	weather, err := weatherService.GetWeatherByZip(req.ZipCode, "US", "metric")
+	if err != nil {
+		return err
+	}
+
+	// Send current weather to Kafka
+	err = producer.SendCurrentWeather(req.ZipCode, weather.Name, "US", weather)
+	if err != nil {
+		log.Printf("❌ Failed to send current weather to Kafka for %s: %v", req.ZipCode, err)
+	}
+
+	// Fetch forecast if requested
+	if req.Days > 0 {
+		forecast, err := weatherService.GetForecastByZip(req.ZipCode, "US", "metric")
+		if err != nil {
+			return err
+		}
+
+		// Send forecast to Kafka
+		err = producer.SendForecastWeather(req.ZipCode, forecast.City.Name, "US", forecast)
+		if err != nil {
+			log.Printf("❌ Failed to send forecast to Kafka for %s: %v", req.ZipCode, err)
+		}
+	}
+
+	return nil
 }
 
 // getEnvOrDefault returns environment variable value or default

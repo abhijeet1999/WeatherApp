@@ -54,7 +54,22 @@ type WeatherMessage struct {
 	Country     string                              `json:"country"`
 	Current     *models.OpenWeatherResponse         `json:"current,omitempty"`
 	Forecast    *models.OpenWeatherForecastResponse `json:"forecast,omitempty"`
-	MessageType string                              `json:"message_type"` // "current" or "forecast"
+	Hourly      *models.ForecastItem                `json:"hourly,omitempty"`
+	Daily       *DailyWeatherData                   `json:"daily,omitempty"`
+	MessageType string                              `json:"message_type"` // "current", "forecast", "hourly", "daily"
+}
+
+// DailyWeatherData represents daily weather summary
+type DailyWeatherData struct {
+	Day         int     `json:"day"`
+	Date        string  `json:"date"`
+	TempMin     float32 `json:"temp_min"`
+	TempMax     float32 `json:"temp_max"`
+	TempAvg     float32 `json:"temp_avg"`
+	Humidity    int     `json:"humidity"`
+	WindSpeed   float32 `json:"wind_speed"`
+	Description string  `json:"description"`
+	Icon        string  `json:"icon"`
 }
 
 // StartConsuming starts consuming messages from Kafka
@@ -96,6 +111,10 @@ func (kc *KafkaConsumer) processMessage(msg kafka.Message) error {
 		return kc.processCurrentWeather(weatherMsg)
 	case "forecast":
 		return kc.processForecastWeather(weatherMsg)
+	case "hourly":
+		return kc.processHourlyWeather(weatherMsg)
+	case "daily":
+		return kc.processDailyWeather(weatherMsg)
 	default:
 		return fmt.Errorf("unknown message type: %s", weatherMsg.MessageType)
 	}
@@ -143,6 +162,50 @@ func (kc *KafkaConsumer) processForecastWeather(msg WeatherMessage) error {
 
 	log.Printf("📊 Updated forecast metrics for %s: %d forecast items",
 		msg.City, len(msg.Forecast.List))
+
+	return nil
+}
+
+// processHourlyWeather processes individual hourly weather data
+func (kc *KafkaConsumer) processHourlyWeather(msg WeatherMessage) error {
+	if msg.Hourly == nil {
+		return fmt.Errorf("hourly weather data is nil")
+	}
+
+	// Update Prometheus metrics for hourly data
+	kc.metrics.UpdateForecastWeatherMetrics(
+		msg.City,
+		msg.Hourly.Main.Temp,
+		float32(msg.Hourly.Main.Humidity),
+		msg.Hourly.Wind.Speed,
+		float32(msg.Hourly.Main.Pressure),
+		msg.Hourly.Dt,
+	)
+
+	log.Printf("📊 Updated hourly metrics for %s: Temp=%.1f°C, Humidity=%d%%, Wind=%.1fm/s",
+		msg.City, msg.Hourly.Main.Temp, msg.Hourly.Main.Humidity, msg.Hourly.Wind.Speed)
+
+	return nil
+}
+
+// processDailyWeather processes daily weather summary data
+func (kc *KafkaConsumer) processDailyWeather(msg WeatherMessage) error {
+	if msg.Daily == nil {
+		return fmt.Errorf("daily weather data is nil")
+	}
+
+	// Update Prometheus metrics for daily data
+	// Use average temperature for daily metrics
+	kc.metrics.UpdateCurrentWeatherMetrics(
+		msg.City,
+		msg.Daily.TempAvg,
+		float32(msg.Daily.Humidity),
+		msg.Daily.WindSpeed,
+		1013.25, // Default pressure for daily data
+	)
+
+	log.Printf("📊 Updated daily metrics for %s (Day %d): TempAvg=%.1f°C, TempMin=%.1f°C, TempMax=%.1f°C, Humidity=%d%%, Wind=%.1fm/s",
+		msg.City, msg.Daily.Day, msg.Daily.TempAvg, msg.Daily.TempMin, msg.Daily.TempMax, msg.Daily.Humidity, msg.Daily.WindSpeed)
 
 	return nil
 }

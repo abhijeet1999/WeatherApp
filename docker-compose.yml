@@ -50,30 +50,10 @@ services:
       retries: 5
       start_period: 60s
 
-  # Weather Producer
-  weather-producer:
-    build:
-      context: .
-      dockerfile: Producer/Dockerfile
-    container_name: weather-producer
-    depends_on:
-      kafka:
-        condition: service_healthy
-    environment:
-      - WEATHER_API_KEY=ecf61506589947d7b61b973cda129055
-      - KAFKA_SERVERS=kafka:29092
-      - KAFKA_TOPIC=weather_data
-      - INPUT_FILE=input.txt
-    volumes:
-      - ./input.txt:/root/input.txt
-    restart: unless-stopped
-
-  # Weather Consumer
-  weather-consumer:
-    build:
-      context: .
-      dockerfile: Consumer/Dockerfile
-    container_name: weather-consumer
+  # Weather App (Combined Producer + Consumer)
+  weather-app:
+    image: weatherapp-combined:latest
+    container_name: weather-app
     depends_on:
       kafka:
         condition: service_healthy
@@ -81,11 +61,15 @@ services:
       - "8080:8080"  # Prometheus metrics
       - "8081:8081"  # HTTP API
     environment:
+      - WEATHER_API_KEY=${WEATHER_API_KEY}
       - KAFKA_SERVERS=kafka:29092
       - KAFKA_TOPIC=weather_data
       - CONSUMER_GROUP_ID=weather-consumer-group
       - METRICS_PORT=8080
       - API_PORT=8081
+      - INPUT_FILE=input.txt
+    volumes:
+      - ./input.txt:/root/input.txt
     restart: unless-stopped
 
   # Prometheus

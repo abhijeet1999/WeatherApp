@@ -18,10 +18,10 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
-  # Weather Consumer Metrics
-  - job_name: 'weather-consumer'
+  # Weather App (Combined Producer + Consumer)
+  - job_name: 'weather-app'
     static_configs:
-      - targets: ['weather-consumer:8080']  # Weather consumer metrics endpoint
+      - targets: ['weather-app:8080']  # Single service metrics endpoint
     scrape_interval: 5s
     metrics_path: '/metrics'
 

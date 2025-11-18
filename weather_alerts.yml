@@ -1,0 +1,142 @@
+groups:
+- name: weather_alerts
+  rules:
+  # High Temperature Alert
+  - alert: HighTemperature
+    expr: weather_temperature_celsius > 30
+    for: 2m
+    labels:
+      severity: warning
+      temperature: "{{ $value }}"
+    annotations:
+      summary: "High temperature detected in {{ $labels.city }}"
+      description: "Temperature in {{ $labels.city }} is {{ $value }}°C, which is above the warning threshold of 30°C"
+      runbook_url: "https://example.com/runbook/high-temperature"
+
+  # Critical High Temperature Alert
+  - alert: CriticalHighTemperature
+    expr: weather_temperature_celsius > 35
+    for: 1m
+    labels:
+      severity: critical
+      temperature: "{{ $value }}"
+    annotations:
+      summary: "CRITICAL: Extremely high temperature in {{ $labels.city }}"
+      description: "Temperature in {{ $labels.city }} is {{ $value }}°C, which is above the critical threshold of 35°C"
+      runbook_url: "https://example.com/runbook/critical-temperature"
+
+  # Low Temperature Alert
+  - alert: LowTemperature
+    expr: weather_temperature_celsius < 0
+    for: 2m
+    labels:
+      severity: warning
+      temperature: "{{ $value }}"
+    annotations:
+      summary: "Low temperature detected in {{ $labels.city }}"
+      description: "Temperature in {{ $labels.city }} is {{ $value }}°C, which is below the warning threshold of 0°C"
+      runbook_url: "https://example.com/runbook/low-temperature"
+
+  # Critical Low Temperature Alert
+  - alert: CriticalLowTemperature
+    expr: weather_temperature_celsius < -10
+    for: 1m
+    labels:
+      severity: critical
+      temperature: "{{ $value }}"
+    annotations:
+      summary: "CRITICAL: Extremely low temperature in {{ $labels.city }}"
+      description: "Temperature in {{ $labels.city }} is {{ $value }}°C, which is below the critical threshold of -10°C"
+      runbook_url: "https://example.com/runbook/critical-low-temperature"
+
+  # Custom Temperature Alerts (based on input.txt thresholds)
+  - alert: PoughkeepsieTemperatureAlert
+    expr: weather_temperature_celsius{city="Poughkeepsie"} >= 10
+    for: 0m
+    labels:
+      severity: warning
+      city: "Poughkeepsie"
+      temperature: "{{ $value }}"
+    annotations:
+      summary: "Poughkeepsie temperature reached 10°C threshold"
+      description: "Temperature in Poughkeepsie is {{ $value }}°C, which has reached the 10°C alert threshold"
+
+  - alert: NewYorkTemperatureAlert
+    expr: weather_temperature_celsius{city="New York City"} >= 15
+    for: 0m
+    labels:
+      severity: warning
+      city: "New York City"
+      temperature: "{{ $value }}"
+    annotations:
+      summary: "New York City temperature reached 15°C threshold"
+      description: "Temperature in New York City is {{ $value }}°C, which has reached the 15°C alert threshold"
+
+  - alert: BeverlyHillsTemperatureAlert
+    expr: weather_temperature_celsius{city="Beverly Hills"} >= 20
+    for: 0m
+    labels:
+      severity: warning
+      city: "Beverly Hills"
+      temperature: "{{ $value }}"
+    annotations:
+      summary: "Beverly Hills temperature reached 20°C threshold"
+      description: "Temperature in Beverly Hills is {{ $value }}°C, which has reached the 20°C alert threshold"
+
+  # High Humidity Alert
+  - alert: HighHumidity
+    expr: weather_humidity_percent > 90
+    for: 5m
+    labels:
+      severity: warning
+      humidity: "{{ $value }}"
+    annotations:
+      summary: "High humidity detected in {{ $labels.city }}"
+      description: "Humidity in {{ $labels.city }} is {{ $value }}%, which is above the warning threshold of 90%"
+      runbook_url: "https://example.com/runbook/high-humidity"
+
+  # High Wind Speed Alert
+  - alert: HighWindSpeed
+    expr: weather_wind_speed_meters_per_second > 15
+    for: 3m
+    labels:
+      severity: warning
+      wind_speed: "{{ $value }}"
+    annotations:
+      summary: "High wind speed detected in {{ $labels.city }}"
+      description: "Wind speed in {{ $labels.city }} is {{ $value }} m/s, which is above the warning threshold of 15 m/s"
+      runbook_url: "https://example.com/runbook/high-wind"
+
+  # Critical Wind Speed Alert
+  - alert: CriticalWindSpeed
+    expr: weather_wind_speed_meters_per_second > 25
+    for: 1m
+    labels:
+      severity: critical
+      wind_speed: "{{ $value }}"
+    annotations:
+      summary: "CRITICAL: Extremely high wind speed in {{ $labels.city }}"
+      description: "Wind speed in {{ $labels.city }} is {{ $value }} m/s, which is above the critical threshold of 25 m/s"
+      runbook_url: "https://example.com/runbook/critical-wind"
+
+  # Weather Service Down Alert
+  - alert: WeatherServiceDown
+    expr: up{job="weather-app"} == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Weather service is down"
+      description: "Weather service has been down for more than 1 minute"
+      runbook_url: "https://example.com/runbook/service-down"
+
+  # No Weather Data Alert
+  - alert: NoWeatherData
+    expr: increase(weather_requests_total[10m]) == 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "No weather data received"
+      description: "No weather requests have been processed in the last 10 minutes"
+      runbook_url: "https://example.com/runbook/no-data"

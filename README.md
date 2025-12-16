@@ -365,3 +365,6 @@ For issues and questions:
 2. Review Docker logs
 3. Verify configuration
 4. Check service connectivity
+
+# Note:
+This project was developed as part of the coursework for MSCS621: Cloud Computing at Marist University, instructed by Rasit Onur Topaloglu, Ph.D. The project specifications and requirements were provided as part of the course assignment.
